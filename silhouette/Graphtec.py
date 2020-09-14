@@ -392,22 +392,31 @@ Alternatively, you can add yourself to group 'lp' and logout/login.""" % (self.h
 class BTConnection(AbstractConnection):
   def __init__(self, log=sys.stderr):
     super(BTConnection, self).__init__()
+    self.dev = None
 
     print("Searching for bt devices", file=log)
 
-    # discover all bluetooth devices
-    bt_devs = bluetooth.discover_devices(duration=8, lookup_names=True, lookup_class=False)
+    # performe binary exponential back-off to speed up device discovery
+    # maybe further speedup can be gained using some sort of device cache?!
+    dur = 1
+    while dur <= 8:
+        # discover all bluetooth devices
+        bt_devs = bluetooth.discover_devices(duration=dur, lookup_names=True, lookup_class=False)
 
-    for addr, name in bt_devs:
-        print(" {} - {}".format(addr, name), file=log)
+        for addr, name in bt_devs:
+            print(" {} - {}".format(addr, name), file=log)
 
-    # search for known devices with bt support
-    # TODO add support for other machines. I would expect files like CAMEO3-... and PORTRAIT2-...
-    pat = re.compile("(PORTRAIT 2|CAMEO 3|CAMEO 4)-.*")
+        # search for known devices with bt support
+        # TODO add support for other machines. I would expect files like CAMEO3-... and PORTRAIT2-...
+        pat = re.compile("(PORTRAIT 2|CAMEO 3|CAMEO 4)-.*")
 
-    # get first matching device
-    bt_devs = [(addr, name) for addr, name in bt_devs if pat.match(name)]
-    bt_dev = (bt_devs[0]) if bt_devs else None
+        # get first matching device
+        bt_devs = [(addr, name) for addr, name in bt_devs if pat.match(name)]
+        bt_dev = (bt_devs[0]) if bt_devs else None
+        if bt_dev is not None:
+            break
+        dur = dur * 2
+
     if bt_dev is None:
       raise ValueError('No Graphtec Silhouette bluetooth devices found.\nCheck Bluetooth and Power.')
 
@@ -434,7 +443,7 @@ class BTConnection(AbstractConnection):
     except StopIteration:
       print("Failed to detect Serial Port Service", file=log)
       raise
-    # get port of service (this might me always 1, which would save us the work
+    # get port of service (this might be always 1, which would save us the work
     # to get a list of services and extract the port from it)
     bt_port = service["port"]
 
@@ -447,6 +456,10 @@ class BTConnection(AbstractConnection):
 
     print("Opening connection: Done", file=log)
 
+  def __del__(self):
+      if self.dev is not None:
+          print("Closing bt connection", file=sys.stderr)
+          self.dev.close()
 
   def write(self, data, timeout=10000):
     r = 0
