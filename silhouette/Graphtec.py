@@ -427,17 +427,22 @@ class BTConnection(AbstractConnection):
 
     # obtain list of all services
     services = bluetooth.find_service(address=bt_addr)
-    # figure out port of serial port profile (service class: 0x1101)
-    service = next(service for service in services if '1101' in service["service-classes"])
+    servicePat = re.compile("Serial Port Service.*")
+    # figure out port of serial port profile
+    try:
+      service = next(service for service in services if servicePat.match(service["name"]))
+    except StopIteration:
+      print("Failed to detect Serial Port Service", file=log)
+      raise
     # get port of service (this might me always 1, which would save us the work
     # to get a list of services and extract the port from it)
     bt_port = service["port"]
 
-    print("Opening connection to device: {} - {} - {}".format(bt_addr, bt_name, bt_port), file=log)
     # create a socket
     self.dev = bluetooth.BluetoothSocket(bluetooth.RFCOMM)
 
     # bind to that port
+    print("Opening connection to device: {} - {} - {}".format(bt_addr, bt_name, bt_port), file=log)
     self.dev.connect((bt_addr, bt_port))
 
     print("Opening connection: Done", file=log)
