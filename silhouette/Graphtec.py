@@ -24,7 +24,13 @@ from __future__ import print_function
 
 import os
 import re
-from serial import Serial
+try:
+  import bluetooth
+  bt_support = True
+except ImportError:
+  print("PyBluez seems to missing on your system.", file=sys.stderr)
+  bt_support = False
+
 import sys
 import time
 
@@ -387,79 +393,72 @@ class BTConnection(AbstractConnection):
   def __init__(self, log=sys.stderr):
     super(BTConnection, self).__init__()
 
-    # figure out file name of the rfcomm
-    rfcommFile = None
-    if sys_platform.startswith('win'):
-      print("Bluetooth device lookup under windows not yet implemented. Help adding code!", file=log)
-    elif sys_platform.startswith('darwin'):
-      print("Searching for bt devices on OSX", file=log)
-      # on osx a rfcomm port is created and linked automatically when the cameo is connected
-      # TODO add support for other machines. I would expect files like CAMEO3-... and PORTRAIT2-...
-      pat = re.compile("tty\.(PORTRAIT2|CAMEO3|CAMEO4)-.*")
-      # get first matching port
-      rfcomms = [f for f in os.listdir("/dev/") if pat.match(f)]
-      rfcomm = rfcomms[0] if rfcomms else None
+    print("Searching for bt devices", file=log)
 
-      if rfcomm is not None:
-        # figure out hardware
-        devName = pat.match(rfcomm).group(1)
-        if (devName == "PORTRAIT2"):
-          self.hardware = next(item for item in DEVICE if item["name"] == "Silhouette Portrait2")
-        elif (devName == "CAMEO3"):
-          self.hardware = next(item for item in DEVICE if item["name"] == "Silhouette Cameo3")
-        elif (devName == "CAMEO4"):
-          self.hardware = next(item for item in DEVICE if item["name"] == "Silhouette Cameo4")
-        rfcommFile = os.path.join(os.sep, "dev", rfcomms[0])
-        print("Found device at port %s" % rfcommFile, file=log)
-    else:   # linux
-      print("Searching for bt devices on Linux", file=log)
+    # discover all bluetooth devices
+    bt_devs = bluetooth.discover_devices(duration=8, lookup_names=True, lookup_class=False)
 
-      pat = re.compile("tty\.(PORTRAIT2|CAMEO3|CAMEO4)-?.*")
-      # get first matching port
-      rfcomms = [f for f in os.listdir("/dev/") if pat.match(f)]
-      rfcomm = rfcomms[0] if rfcomms else None
+    for addr, name in bt_devs:
+        print(" {} - {}".format(addr, name), file=log)
 
-      if rfcomm is not None:
-        # figure out hardware
-        devName = pat.match(rfcomm).group(1)
-        if (devName == "PORTRAIT2"):
-          self.hardware = next(item for item in DEVICE if item["name"] == "Silhouette Portrait2")
-        elif (devName == "CAMEO3"):
-          self.hardware = next(item for item in DEVICE if item["name"] == "Silhouette Cameo3")
-        elif (devName == "CAMEO4"):
-          self.hardware = next(item for item in DEVICE if item["name"] == "Silhouette Cameo4")
-        rfcommFile = os.path.join(os.sep, "dev", rfcomms[0])
-        print("Found device at port %s" % rfcommFile, file=log)
-      else:
-        print("Unable to find a rfcomm file for your machine. Have you copied the udev rule to "
-              "/etc/udev/rules.d and adopted its content to your device(s)?",
-              file=log)
+    # search for known devices with bt support
+    # TODO add support for other machines. I would expect files like CAMEO3-... and PORTRAIT2-...
+    pat = re.compile("(PORTRAIT 2|CAMEO 3|CAMEO 4)-.*")
 
-    if rfcommFile is None:
-     raise ValueError('No Graphtec Silhouette bluetooth devices found.\nCheck Bluetooth and Power.')
+    # get first matching device
+    bt_devs = [(addr, name) for addr, name in bt_devs if pat.match(name)]
+    bt_dev = (bt_devs[0]) if bt_devs else None
+    if bt_dev is None:
+      raise ValueError('No Graphtec Silhouette bluetooth devices found.\nCheck Bluetooth and Power.')
 
-    # open serial connection
-    print("Opening serial port:", file=log)
-    self.dev = Serial(rfcommFile)
-    print("Opening serial port: Done", file=log)
+    bt_addr, bt_name = bt_dev
+
+    # figure out hardware
+    dev_name = pat.match(bt_name).group(1)
+    if (dev_name == "PORTRAIT 2"):
+      self.hardware = next(item for item in DEVICE if item["name"] == "Silhouette Portrait2")
+    elif (dev_name == "CAMEO 3"):
+      self.hardware = next(item for item in DEVICE if item["name"] == "Silhouette Cameo3")
+    elif (dev_name == "CAMEO 4"):
+      self.hardware = next(item for item in DEVICE if item["name"] == "Silhouette Cameo4")
+    else:
+      # this can never happen, as pat already matched
+      pass
+
+    # obtain list of all services
+    services = bluetooth.find_service(address=bt_addr)
+    # figure out port of serial port profile (service class: 0x1101)
+    service = next(service for service in services if '1101' in service["service-classes"])
+    # get port of service (this might me always 1, which would save us the work
+    # to get a list of services and extract the port from it)
+    bt_port = service["port"]
+
+    print("Opening connection to device: {} - {} - {}".format(bt_addr, bt_name, bt_port), file=log)
+    # create a socket
+    self.dev = bluetooth.BluetoothSocket(bluetooth.RFCOMM)
+
+    # bind to that port
+    self.dev.connect((bt_addr, bt_port))
+
+    print("Opening connection: Done", file=log)
 
 
   def write(self, data, timeout=10000):
     r = 0
-    # serial uses seconds as timeout
-    self.dev.write_timeout = timeout / 1000.
-    r = self.dev.write(data)
+    # BluetoothSocket uses seconds as timeout
+    # (not sure write uses the timeout at all, but probably doesn't hurt)
+    self.dev.settimeout(timeout / 1000)
+    r = self.dev.send(data)
     return r
 
   def read(self, size=64, timeout=5000):
-    # serial uses seconds as timeout
-    self.dev.timeout = timeout / 1000.
+    # BluetoothSocket uses seconds as timeout
+    self.dev.settimeout(timeout / 1000)
     # pyusb seems to stop reading when it encounters 0x03, so we do the same when reading from
     # the serial port
-    data = self.dev.read_until(b"\x03", size)
+    data = self.dev.recv(size)
 
     return data
-
 
 class SilhouetteCameoTool:
   def __init__(self, toolholder=1):
@@ -526,11 +525,15 @@ class SilhouetteCameo:
       try:
         self.con = USBConnection(log=self.log)
       except:
-        try:
-          self.con = BTConnection(log=self.log)
-        except:
-          raise ValueError('No Graphtec Silhouette USB or Bluetooth devices found.\n'
-                           'Check USB/Bluethooth connection and Power.')
+        if (bt_support):
+            try:
+                self.con = BTConnection(log=self.log)
+            except:
+                raise ValueError('No Graphtec Silhouette USB or Bluetooth devices found.\n'
+                                 'Check USB/Bluethooth connection and Power.')
+        else:
+            raise ValueError('No Graphtec Silhouette USB devices found (Bluetooth not available).\n'
+                             'Check USB connection and Power.')
 
       self.hardware = self.con.hardware
 
