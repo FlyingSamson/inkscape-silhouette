@@ -24,6 +24,7 @@ from __future__ import print_function
 
 import os
 import re
+import select
 try:
   import bluetooth
   bt_support = True
@@ -389,6 +390,29 @@ Alternatively, you can add yourself to group 'lp' and logout/login.""" % (self.h
     return data
 
 
+class SilhouetteBTDiscoverer(bluetooth.DeviceDiscoverer):
+
+  def pre_inquiry(self):
+    self.timedout = False
+    self.device = None
+
+  def device_discovered(self, address, device_class, rssi, name):
+    pat = re.compile("(PORTRAIT 2|CAMEO 3|CAMEO 4)-.*")
+
+    match = pat.match(name)
+    if match:
+        # store address and Machine type 'PORTRAIT 2', 'CAMEO 3', 'CAMEO 4'
+        self.device = (address, match.group(1))
+    else:
+        # pretend that we did not find a device if the found device was not
+        # a supported silhouette plotter
+        self.device = None
+
+  def inquiry_complete(self):
+    self.device = None
+    self.timedout = True
+
+
 class BTConnection(AbstractConnection):
   def __init__(self, log=sys.stderr):
     super(BTConnection, self).__init__()
@@ -396,26 +420,23 @@ class BTConnection(AbstractConnection):
 
     print("Searching for bt devices", file=log)
 
-    # performe binary exponential back-off to speed up device discovery
-    # maybe further speedup can be gained using some sort of device cache?!
-    dur = 1
-    while dur <= 8:
-        # discover all bluetooth devices
-        bt_devs = bluetooth.discover_devices(duration=dur, lookup_names=True, lookup_class=False)
+    discoverer = SilhouetteBTDiscoverer()
+    discoverer.find_devices(lookup_names = True, duration=8, flush_cache=True)
 
-        for addr, name in bt_devs:
-            print(" {} - {}".format(addr, name), file=log)
+    bt_dev = None
 
-        # search for known devices with bt support
-        # TODO add support for other machines. I would expect files like CAMEO3-... and PORTRAIT2-...
-        pat = re.compile("(PORTRAIT 2|CAMEO 3|CAMEO 4)-.*")
-
-        # get first matching device
-        bt_devs = [(addr, name) for addr, name in bt_devs if pat.match(name)]
-        bt_dev = (bt_devs[0]) if bt_devs else None
-        if bt_dev is not None:
-            break
-        dur = dur * 2
+    # poll until silhouette device was detected or duration timed out
+    readfiles = [ discoverer, ]
+    while True:
+      rfds = select.select( readfiles, [], [] )[0]
+      if discoverer in rfds:
+        discoverer.process_event()
+      if discoverer.device is not None:
+        bt_dev = discoverer.device
+        print("Discoverer found device: {} - {}".format(bt_dev[0], bt_dev[1]), file=log)
+        discoverer.cancel_inquiry()
+      if discoverer.timedout:
+        break
 
     if bt_dev is None:
       raise ValueError('No Graphtec Silhouette bluetooth devices found.\nCheck Bluetooth and Power.')
@@ -423,16 +444,12 @@ class BTConnection(AbstractConnection):
     bt_addr, bt_name = bt_dev
 
     # figure out hardware
-    dev_name = pat.match(bt_name).group(1)
-    if (dev_name == "PORTRAIT 2"):
+    if (bt_name == "PORTRAIT 2"):
       self.hardware = next(item for item in DEVICE if item["name"] == "Silhouette Portrait2")
-    elif (dev_name == "CAMEO 3"):
+    elif (bt_name == "CAMEO 3"):
       self.hardware = next(item for item in DEVICE if item["name"] == "Silhouette Cameo3")
-    elif (dev_name == "CAMEO 4"):
+    elif (bt_name == "CAMEO 4"):
       self.hardware = next(item for item in DEVICE if item["name"] == "Silhouette Cameo4")
-    else:
-      # this can never happen, as pat already matched
-      pass
 
     # obtain list of all services
     services = bluetooth.find_service(address=bt_addr)
