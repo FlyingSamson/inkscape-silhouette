@@ -25,6 +25,8 @@ from __future__ import print_function
 import os
 import re
 import select
+import sys
+import time
 try:
   import bluetooth
   bt_support = True
@@ -32,8 +34,6 @@ except ImportError:
   print("PyBluez seems to missing on your system.", file=sys.stderr)
   bt_support = False
 
-import sys
-import time
 
 from abc import ABCMeta, abstractmethod
 
