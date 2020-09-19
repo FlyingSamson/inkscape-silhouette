@@ -11,9 +11,9 @@
    *Note:* I guess this is only necessary when using the MacPorts Python version (/opt/local is my MacPorts prefix, yours might differ)
 -  Install pybluez via
    ```
-   sudo pip-2.7 install git+https://github.com/pybluez/pybluez.git@57df0b1a332ccffe77e850e5e7c10fd856bb640f
+   sudo pip-2.7 install git+https://github.com/pybluez/pybluez.git@7e0e82db64b72820dc13e702740fb23006ca80be
    ```
-   this will install pybluez version 0.22 (last compatible with Python 2), but other than the version tagged 0.22 in the repo this one compiles just fine (will have a look whether there is a later commit that also works)
+   this will install pybluez version 0.22 (last commit working with Python 2, commits afterwards fail with `attribute '__doc__' of 'instancemethod' objects is not writable`, could be fixed by reverting changes made in commit `4b58ec6edda918c322bf3f0bf3fb2eb78584dcb6` if a later version were required), but other than the version tagged 0.22 in the repo this one compiles just fine
 -  Check that everything works: open python interpreter `python2.7` and enter (while your silhouette device switched on and connected via bluetooth)
    - `import bluetooth`
    - `nearby_devices = bluetooth.discover_devices(lookup_names=True)`
