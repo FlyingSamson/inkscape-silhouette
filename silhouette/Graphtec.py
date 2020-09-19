@@ -420,23 +420,50 @@ class BTConnection(AbstractConnection):
 
     print("Searching for bt devices", file=log)
 
-    discoverer = SilhouetteBTDiscoverer()
-    discoverer.find_devices(lookup_names = True, duration=8, flush_cache=True)
-
     bt_dev = None
 
-    # poll until silhouette device was detected or duration timed out
-    readfiles = [ discoverer, ]
-    while True:
-      rfds = select.select( readfiles, [], [] )[0]
-      if discoverer in rfds:
-        discoverer.process_event()
-      if discoverer.device is not None:
-        bt_dev = discoverer.device
-        print("Discoverer found device: {} - {}".format(bt_dev[0], bt_dev[1]), file=log)
-        discoverer.cancel_inquiry()
-      if discoverer.timedout:
-        break
+    # DeviceDiscoverer only supported/implemented for linux
+    if sys_platform.startswith('linux'):
+      discoverer = SilhouetteBTDiscoverer()
+      discoverer.find_devices(lookup_names=True, duration=8, flush_cache=True)
+
+      # poll until silhouette device was detected or duration timed out
+      readfiles = [discoverer, ]
+      while True:
+        rfds = select.select(readfiles, [], [])[0]
+        if discoverer in rfds:
+          discoverer.process_event()
+        if discoverer.device is not None:
+          bt_dev = discoverer.device
+          print("Discoverer found device: {} - {}".format(bt_dev[0], bt_dev[1]), file=log)
+          discoverer.cancel_inquiry()
+        if discoverer.timedout:
+          break
+    else:
+      # performe binary exponential back-off to speed up device discovery
+      # maybe further speedup can be gained using some sort of device cache?!
+      dur = 1
+      while dur <= 8:
+          # discover all bluetooth devices
+          bt_devs = bluetooth.discover_devices(duration=dur, lookup_names=True, lookup_class=False)
+
+          for addr, name in bt_devs:
+              print(" {} - {}".format(addr, name), file=log)
+
+          # search for known devices with bt support
+          # TODO add support for other machines. I would expect files like CAMEO3-... and PORTRAIT2-...
+          pat = re.compile("(PORTRAIT 2|CAMEO 3|CAMEO 4)-.*")
+
+          # get first matching device
+          for addr, name in bt_devs:
+            match = pat.match(name)
+            if match:
+              bt_dev = (addr, match.group(1))
+              break
+
+          if bt_dev is not None:
+              break
+          dur = dur * 2
 
     if bt_dev is None:
       raise ValueError('No Graphtec Silhouette bluetooth devices found.\nCheck Bluetooth and Power.')
