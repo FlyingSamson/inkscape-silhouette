@@ -509,13 +509,15 @@ class BTConnection(AbstractConnection):
     r = 0
     # BluetoothSocket uses seconds as timeout
     # (not sure write uses the timeout at all, but probably doesn't hurt)
-    self.dev.settimeout(timeout / 1000)
+    self.dev.settimeout(timeout / 1000.)
     r = self.dev.send(data)
+
     return r
 
   def read(self, size=64, timeout=5000):
     # BluetoothSocket uses seconds as timeout
-    self.dev.settimeout(timeout / 1000)
+    self.dev.settimeout(timeout / 1000.)
+
     # pyusb seems to stop reading when it encounters 0x03, so we do the same when reading from
     # the serial port
     data = self.dev.recv(size)
