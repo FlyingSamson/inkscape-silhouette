@@ -470,6 +470,10 @@ class BTConnection(AbstractConnection):
 
     bt_addr, bt_name = bt_dev
 
+    if not isinstance(bt_addr, str):
+      # in python3 we get a bytes object but require a str object
+      bt_addr = bt_addr.decode('utf-8')
+
     # figure out hardware
     if (bt_name == "PORTRAIT 2"):
       self.hardware = next(item for item in DEVICE if item["name"] == "Silhouette Portrait2")
