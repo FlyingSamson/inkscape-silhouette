@@ -445,7 +445,7 @@ class BTConnection(AbstractConnection):
       dur = 1
       while dur <= 8:
           # discover all bluetooth devices
-          bt_devs = bluetooth.discover_devices(duration=dur, lookup_names=True, lookup_class=False)
+          bt_devs = bluetooth.discover_devices(duration=dur, lookup_names=True)
 
           for addr, name in bt_devs:
               print(" {} - {}".format(addr, name), file=log)
