@@ -482,14 +482,14 @@ class BTConnection(AbstractConnection):
     elif (bt_name == "CAMEO 4"):
       self.hardware = next(item for item in DEVICE if item["name"] == "Silhouette Cameo4")
 
-    # obtain list of all services
-    services = bluetooth.find_service(address=bt_addr)
-    servicePat = re.compile("Serial Port Service.*")
     # figure out port of serial port profile
     try:
+      # obtain list of all services
+      services = bluetooth.find_service(address=bt_addr)
+      servicePat = re.compile("Serial Port Service.*")
       service = next(service for service in services if servicePat.match(service["name"]))
-    except StopIteration:
-      print("Failed to detect Serial Port Service", file=log)
+    except Exception as e:
+      print("Failed to detect Serial Port Service: " + str(e), file=log)
       raise
     # get port of service (this might be always 1, which would save us the work
     # to get a list of services and extract the port from it)
@@ -500,9 +500,13 @@ class BTConnection(AbstractConnection):
 
     # bind to that port
     print("Opening connection to device: {} - {} - {}".format(bt_addr, bt_name, bt_port), file=log)
-    self.dev.connect((bt_addr, bt_port))
+    try:
+      self.dev.connect((bt_addr, bt_port))
+    except Exception as e:
+      print("Failed to connect to bt device: " + str(e), file=log)
+      raise
 
-    print("Opening connection: Done", file=log)
+    print("Opening connection: Success", file=log)
 
   def __del__(self):
       if self.dev is not None:
