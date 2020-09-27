@@ -416,6 +416,7 @@ class SilhouetteBTDiscoverer(bluetooth.DeviceDiscoverer):
 class BTConnection(AbstractConnection):
   def __init__(self, log=sys.stderr):
     super(BTConnection, self).__init__()
+    self.log = log
     self.dev = None
 
     print("Searching for bt devices", file=log)
@@ -510,7 +511,7 @@ class BTConnection(AbstractConnection):
 
   def __del__(self):
       if self.dev is not None:
-          print("Closing bt connection", file=sys.stderr)
+          print("Closing bt connection", file=self.log)
           self.dev.close()
 
   def write(self, data, timeout=10000):
