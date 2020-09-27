@@ -397,6 +397,10 @@ class SilhouetteBTDiscoverer(bluetooth.DeviceDiscoverer):
     self.device = None
 
   def device_discovered(self, address, device_class, rssi, name):
+    if not isinstance(name, str):
+      # in python3 we get a bytes object but require a str object
+      name = name.decode('utf-8')
+
     pat = re.compile("(PORTRAIT 2|CAMEO 3|CAMEO 4)-.*")
 
     match = pat.match(name)
