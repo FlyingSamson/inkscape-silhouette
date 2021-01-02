@@ -83,7 +83,7 @@ try:
       print("\n\n\n", file=sys.stderr)
       sys.exit(0)
 except NameError:
-    pass #on OS X usb.version_info[0] will always fail as libusb1 is being used
+    pass # on OS X usb.version_info[0] will always fail as libusb1 is being used
 
 
 # taken from
@@ -184,6 +184,7 @@ DEVICE = [
  { 'vendor_id': VENDOR_ID_GRAPHTEC, 'product_id': PRODUCT_ID_SILHOUETTE_SD_1, 'name': 'Silhouette SD 1' },
  { 'vendor_id': VENDOR_ID_GRAPHTEC, 'product_id': PRODUCT_ID_SILHOUETTE_SD_2, 'name': 'Silhouette SD 2' },
 ]
+
 
 def _bbox_extend(bb, x, y):
     # The coordinate system origin is in the top lefthand corner.
@@ -354,8 +355,8 @@ Alternatively, you can add yourself to group 'lp' and logout/login.""" % (self.h
             print("retrying reset in 5 sec", file=log)
             time.sleep(5)
 
-      dev.set_configuration()
       try:
+        dev.set_configuration()
         dev.set_interface_altsetting()      # Probably not really necessary.
       except usb.core.USBError:
         pass
@@ -730,8 +731,16 @@ class SilhouetteCameo:
     """ Sends a command or a list of commands of type string """
     if isinstance(cmd, str):
       data = cmd
-    elif isinstance(cmd, list) and isinstance(cmd[0], str):
-      data = CMD_ETX.join(cmd)
+    elif isinstance(cmd, list):
+      if not cmd:
+        # if list of commands is empty this function shall do nothing
+        return
+      else:
+        # list must not contain anything but strings
+        for c in cmd:
+          if not isinstance(c, str):
+            raise TypeError("Send Command Exception: %s " % type(cmd))
+        data = CMD_ETX.join(cmd)
     else:
       raise TypeError("Send Command Exception: %s " % type(cmd))
     self.safe_write(data + CMD_ETX)
@@ -749,12 +758,13 @@ class SilhouetteCameo:
     data = self.con.read(size, timeout)
     if data is None:
       raise ValueError('read failed: none')
-    if isinstance(data, (str, bytes)):
+    if isinstance(data, (str, bytes, bytearray)):
         return data.decode()
-    elif isinstance(data, bytearray):
-        return str(data).decode()
     else:
-        return data.tostring().decode()
+        try:
+            return data.tobytes().decode() # with py3
+        except:
+            return data.tostring().decode() # with py2/3 - dropped in py39
 
   def try_read(self, size=64, timeout=1000):
     ret=None
@@ -1008,8 +1018,8 @@ class SilhouetteCameo:
         if i[0] == media:
           print("Media=%d, cap='%s', name='%s'" % (media, i[4], i[5]), file=self.log)
           if pressure is None: pressure = i[1]
-          if    speed is None:    speed = i[2]
-          if    depth is None:    depth = i[3]
+          if speed is None:    speed = i[2]
+          if depth is None:    depth = i[3]
           break
 
     tool = SilhouetteCameoTool(toolholder)
@@ -1205,7 +1215,7 @@ class SilhouetteCameo:
     return "D%d,%d" % (_mm_2_SU(mmy), _mm_2_SU(mmx))
 
   def upper_left_mm_cmd(self, mmy, mmx):
-    """ \y,x """
+    r""" \y,x """
     return "\\%d,%d" % (_mm_2_SU(mmy), _mm_2_SU(mmx))
 
   def lower_right_mm_cmd(self, mmy, mmx):
@@ -1479,8 +1489,6 @@ class SilhouetteCameo:
 
     # potentially long command string needs extra care
     self.safe_send_command(cmd_list)
-
-    self.wait_for_ready()
 
     # Silhouette Cameo2 does not start new job if not properly parked on left side
     # Attention: This needs the media to not extend beyond the left stop
