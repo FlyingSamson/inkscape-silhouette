@@ -889,7 +889,6 @@ class SilhouetteCameo:
       if resp:
         # response '    0,    0' on portrait
         print("TB71: '%s'" % resp, file=self.log)
-
       # Unknown: 2 five digit numbers. Probably machine stored calibration factors of carriage and roller (carriage, roller / unit 1/100% i.e. 0.0001)
       resp = self.send_receive_command("FA")
       if resp:
